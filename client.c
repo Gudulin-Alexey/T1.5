@@ -6,9 +6,13 @@
 #include <sys/ipc.h>
 #include <sys/types.h>
 #include <string.h>
+/*
+	use  -f (--file) FileName      set reading from file ... example ./client --file file1
 
+*/
 
 #define TYPES_COUNT 3
+#define MAX_STR_LENGTH 100 // max length string in file
 
 struct data_type
 {
@@ -51,6 +55,16 @@ static const struct option longOpts[] = {
 	{"file", required_argument, NULL, 'f'}
 };
 
+
+void parseStr(char* str, char *type, char *data)
+{
+	char *token = strtok(str,":");
+	strcpy(type,token);
+	if ((token = strtok(NULL,":")) != NULL)
+		strcpy(data,token);
+	
+}
+
 int getDataFromStr(char* typeName, char* str, mesgData *mdata)
 {
 	int value;
@@ -73,7 +87,7 @@ int getDataFromStr(char* typeName, char* str, mesgData *mdata)
 				
 			break;
 		case 1:
-			if(stlen[str] != 5)
+			if((strlen(str)) < 5)
 				return 2;
 			else
 				sscanf(str,"%s", mdata->data.c);	
@@ -114,6 +128,8 @@ int main(int argc, char* argv[])
 		opt = getopt_long( argc, argv, optString, longOpts, &longIndex );
 	}
 
+
+
 	key_t msgkey;
 	msgkey = ftok(".",5);
 	if( (globalArgs.qid = msgget(msgkey, 0)) == -1)
@@ -121,18 +137,22 @@ int main(int argc, char* argv[])
 		printf("message queue doesnt exist\n");
 		return 1;
 	}
+
+
+
 	if (globalArgs.fromFile)
 	{
+		char s[MAX_STR_LENGTH];
 		FILE *f;
 		if(!(f = fopen( globalArgs.fileName, "r")))
 		{
 			printf("file not exists\n");
 			return 1;
 		}
-		while(!feof(f))
+		while(fgets(s,MAX_STR_LENGTH,f) != NULL)
 		{
 			int err;
-			fscanf(f,"%s:%s", type,str);
+			parseStr(s,type,str);
 			if (!(err = getDataFromStr(type, str, &send)))
 				msgsnd(globalArgs.qid, &send, sizeof(mesgData)-sizeof(long), 0);
 			else if (err == 1)

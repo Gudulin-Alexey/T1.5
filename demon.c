@@ -8,7 +8,17 @@
 #include <sys/types.h>
 #include <string.h>
 #include <signal.h>
+/*
+	use -D to start process like demon
+	use -i (--intF) FileName    to set output file for <int>
+	use -c (--charF) FileName    to set output file for <char[5]>
+	use -s (--structF) FileName    to set output file for <mystruct>
+	To terminate process use Ctrl+C from shell , 
+	if proccess works like demon use kill -15 PID (SIGTERM)
+	if you use kill -9 PID (SIGKILL) message queue will be not removed
+	
 
+*/
 #define TYPES_COUNT 3
 
 
