@@ -2,12 +2,24 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <getopt.h>
+#include <time.h>
+#include <sys/msg.h>
+#include <sys/ipc.h>
+#include <sys/types.h>
+#include <string.h>
+
+
 struct globalArgs_t 
 {
 	int demonFlag;
 	char* intFileName;
 	char* charFileName;
 	char* structFileName;
+	int qid;
+	FILE *intFile;
+	FILE *charFile;
+	FILE *structFile;
+	int stopFlag;
 
 } globalArgs;
 
@@ -20,6 +32,20 @@ static const struct option longOpts[] = {
 	{"demon", no_argument, NULL, 'D'}
 };
 
+struct mystruct { int a; int b; int c;};
+
+typedef struct mesgData_t
+{
+	long msgtype;
+	union {
+	int i;
+	char s[5];
+	struct mystruct ms;
+	} data;
+	int dtype;
+} mesgData;
+
+
 void SetPidFile(char* Filename)
 {
     FILE* f;
@@ -31,11 +57,66 @@ void SetPidFile(char* Filename)
         fclose(f);
     }
 }
+void currtime(char *str)
+{
+	struct tm *u;
+	time_t t = time(NULL);
+	char s[24];
+	u = localtime(&t);
+	for (int i = 0;i<40;i++) s[i] = 0;
+	strftime(s, 24,"<%d.%m.%Y,%H:%M:%S>: ", u);
+	strcpy(str,s);
+}
+
+void DataToFile(mesgData *mdata)
+{
+	char time[24];
+	switch( mdata->dtype )
+	{
+		case 1:
+			currtime(time);
+			fwrite(time, sizeof(char),24,globalArgs.intFile);
+			fwrite(&mdata->data, sizeof(int),1, globalArgs.intFile);
+			break;
+		case 2:
+			currtime(time);
+			fwrite(time, sizeof(char),24,globalArgs.charFile);
+			fwrite(&mdata->data, sizeof(char),5, globalArgs.charFile);
+			break;
+		case 3:
+			currtime(time);
+			fwrite(time, sizeof(char),24,globalArgs.structFile);
+			fwrite(&mdata->data, sizeof(struct mystruct),1, globalArgs.structFile);
+			break;
+		default:
+			break;
+	}
+	
+}
+
+void WorkProc()
+{	
+	
+	key_t msgkey;
+	mesgData recieved;
+	
+	msgkey = ftok(".",5);
+	globalArgs.qid = msgget(msgkey, IPC_CREAT | 0666);
+	while (!globalArgs.stopFlag)
+	{
+		msgrcv(globalArgs.qid, &recieved,sizeof(mesgData)-sizeof(long),1, 0);
+		DataToFile(&recieved);
+	}
+	msgctl(globalArgs.qid, IPC_RMID, 0);
+}
 
 int main(int argc, char* argv[])
 {
 	int status;
 	int pid;
+	globalArgs.intFileName = "int.txt";
+	globalArgs.charFileName = "char.txt";
+	globalArgs.structFileName = "struct.txt";
 	int opt = 0;
 	int longIndex = 0;
 	opt = getopt_long( argc, argv, optString, longOpts, &longIndex );
@@ -60,10 +141,10 @@ int main(int argc, char* argv[])
 		}
 		opt = getopt_long( argc, argv, optString, longOpts, &longIndex );
 	}
-	printf("intFileName%s\n",globalArgs.intFileName);
-	printf("charFileName%s\n",globalArgs.charFileName);
-	printf("structFileName%s\n",globalArgs.structFileName);
-	printf("demonFlag%d\n",globalArgs.demonFlag);
+	globalArgs.intFile = fopen( globalArgs.intFileName, "w+b");
+	globalArgs.charFile = fopen( globalArgs.charFileName, "w+b");
+	globalArgs.structFile = fopen( globalArgs.structFileName, "w+b");
+	printf("demonFlag %d\n",globalArgs.demonFlag);
 	if ( globalArgs.demonFlag == 1)
 	{
 		pid = fork();
@@ -76,6 +157,10 @@ int main(int argc, char* argv[])
 		{
 			setsid();
 			SetPidFile("mydemonPID");
+			close(STDIN_FILENO);
+			close(STDOUT_FILENO);
+			close(STDERR_FILENO);
+			WorkProc();
 			return 0;
 
 		}
