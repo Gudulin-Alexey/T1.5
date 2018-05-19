@@ -8,17 +8,41 @@
 #include <sys/types.h>
 #include <string.h>
 
+#define TYPES_COUNT 3
+
+struct data_type
+{
+	char *typeName;
+	int sizeOfType;
+
+};
+
+
+struct mystruct { int a; int b; int c;};
+
+static const struct data_type typeList[3] = {
+	{"int", sizeof(int)},
+	{"char", sizeof(char)*5},
+	{"mystruct", sizeof(struct mystruct)}
+};
+
+typedef struct mesgData_t
+{
+	long msgtype;
+	union {
+	int i;
+	char c[5];
+	struct mystruct ms;
+	} data;
+	int dtype;
+} mesgData;
 
 struct globalArgs_t 
 {
 	int demonFlag;
-	char* intFileName;
-	char* charFileName;
-	char* structFileName;
+	char *typeFileName[TYPES_COUNT];
 	int qid;
-	FILE *intFile;
-	FILE *charFile;
-	FILE *structFile;
+	FILE *typeFile[TYPES_COUNT];
 	int stopFlag;
 
 } globalArgs;
@@ -32,18 +56,9 @@ static const struct option longOpts[] = {
 	{"demon", no_argument, NULL, 'D'}
 };
 
-struct mystruct { int a; int b; int c;};
 
-typedef struct mesgData_t
-{
-	long msgtype;
-	union {
-	int i;
-	char s[5];
-	struct mystruct ms;
-	} data;
-	int dtype;
-} mesgData;
+
+
 
 
 void SetPidFile(char* Filename)
@@ -71,26 +86,10 @@ void currtime(char *str)
 void DataToFile(mesgData *mdata)
 {
 	char time[24];
-	switch( mdata->dtype )
-	{
-		case 1:
-			currtime(time);
-			fwrite(time, sizeof(char),24,globalArgs.intFile);
-			fwrite(&mdata->data, sizeof(int),1, globalArgs.intFile);
-			break;
-		case 2:
-			currtime(time);
-			fwrite(time, sizeof(char),24,globalArgs.charFile);
-			fwrite(&mdata->data, sizeof(char),5, globalArgs.charFile);
-			break;
-		case 3:
-			currtime(time);
-			fwrite(time, sizeof(char),24,globalArgs.structFile);
-			fwrite(&mdata->data, sizeof(struct mystruct),1, globalArgs.structFile);
-			break;
-		default:
-			break;
-	}
+	int i = mdata->dtype;
+	currtime(time);
+	fwrite(time, sizeof(char),24,globalArgs.typeFile[i]);
+	fwrite(&mdata->data, typeList[i].sizeOfType, 1, globalArgs.typeFile[i]);
 	
 }
 
@@ -114,9 +113,14 @@ int main(int argc, char* argv[])
 {
 	int status;
 	int pid;
-	globalArgs.intFileName = "int.txt";
-	globalArgs.charFileName = "char.txt";
-	globalArgs.structFileName = "struct.txt";
+
+	for(int i = 0;i < TYPES_COUNT; i++)  // default fileNames 
+	{
+		globalArgs.typeFileName[i] = (char*) malloc(strlen(typeList[i].typeName)+4);
+		strcpy(globalArgs.typeFileName[i], typeList[i].typeName);
+		strcat(globalArgs.typeFileName[i], ".txt");
+
+	}
 	int opt = 0;
 	int longIndex = 0;
 	opt = getopt_long( argc, argv, optString, longOpts, &longIndex );
@@ -125,13 +129,13 @@ int main(int argc, char* argv[])
 		switch( opt)
 		{
 			case 'i':
-				globalArgs.intFileName = optarg;
+				globalArgs.typeFileName[0] = optarg;
 				break;
 			case 'c':
-				globalArgs.charFileName = optarg;
+				globalArgs.typeFileName[1] = optarg;
 				break;
 			case 's':
-				globalArgs.structFileName = optarg;
+				globalArgs.typeFileName[2] = optarg;
 				break;
 			case 'D':
 				globalArgs.demonFlag = 1;
@@ -141,9 +145,11 @@ int main(int argc, char* argv[])
 		}
 		opt = getopt_long( argc, argv, optString, longOpts, &longIndex );
 	}
-	globalArgs.intFile = fopen( globalArgs.intFileName, "w+b");
-	globalArgs.charFile = fopen( globalArgs.charFileName, "w+b");
-	globalArgs.structFile = fopen( globalArgs.structFileName, "w+b");
+	for(int i = 0;i < TYPES_COUNT; i++)  // open file to write for every type 
+	{
+		globalArgs.typeFile[i] = fopen( globalArgs.typeFileName[i], "w+b");
+	}
+
 	printf("demonFlag %d\n",globalArgs.demonFlag);
 	if ( globalArgs.demonFlag == 1)
 	{
