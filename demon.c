@@ -7,8 +7,10 @@
 #include <sys/ipc.h>
 #include <sys/types.h>
 #include <string.h>
+#include <signal.h>
 
 #define TYPES_COUNT 3
+
 
 struct data_type
 {
@@ -20,7 +22,7 @@ struct data_type
 
 struct mystruct { int a; int b; int c;};
 
-static const struct data_type typeList[3] = {
+static const struct data_type typeList[TYPES_COUNT] = {
 	{"int", sizeof(int)},
 	{"char", sizeof(char)*5},
 	{"mystruct", sizeof(struct mystruct)}
@@ -59,6 +61,14 @@ static const struct option longOpts[] = {
 
 
 
+void myhandle(int mysignal)
+{
+	msgctl(globalArgs.qid, IPC_RMID, 0);
+	for(int i=0;i < TYPES_COUNT; i++)
+		fclose(	globalArgs.typeFile[i]);
+	exit(1);
+}
+
 
 
 void SetPidFile(char* Filename)
@@ -76,21 +86,22 @@ void currtime(char *str)
 {
 	struct tm *u;
 	time_t t = time(NULL);
-	char s[24];
+	char s[30];
 	u = localtime(&t);
 	for (int i = 0;i<40;i++) s[i] = 0;
-	strftime(s, 24,"<%d.%m.%Y,%H:%M:%S>: ", u);
+	strftime(s, 25,"<%d.%m.%Y,%H:%M:%S>: ", u);
 	strcpy(str,s);
 }
 
 void DataToFile(mesgData *mdata)
 {
-	char time[24];
+	char time[30];
 	int i = mdata->dtype;
 	currtime(time);
-	fwrite(time, sizeof(char),24,globalArgs.typeFile[i]);
+	fwrite(time, sizeof(char),strlen(time),globalArgs.typeFile[i]);
 	fwrite(&mdata->data, typeList[i].sizeOfType, 1, globalArgs.typeFile[i]);
-	
+	fputs("\n",globalArgs.typeFile[i]);
+	fflush(globalArgs.typeFile[i]);
 }
 
 void WorkProc()
@@ -100,7 +111,8 @@ void WorkProc()
 	mesgData recieved;
 	
 	msgkey = ftok(".",5);
-	globalArgs.qid = msgget(msgkey, IPC_CREAT | 0666);
+	if((globalArgs.qid = msgget(msgkey, IPC_EXCL | IPC_CREAT | 0666)) == -1)
+		return;
 	while (!globalArgs.stopFlag)
 	{
 		msgrcv(globalArgs.qid, &recieved,sizeof(mesgData)-sizeof(long),1, 0);
@@ -113,10 +125,11 @@ int main(int argc, char* argv[])
 {
 	int status;
 	int pid;
-
+	signal(SIGTERM, myhandle);
+	signal(SIGINT, myhandle);
 	for(int i = 0;i < TYPES_COUNT; i++)  // default fileNames 
 	{
-		globalArgs.typeFileName[i] = (char*) malloc(strlen(typeList[i].typeName)+4);
+		globalArgs.typeFileName[i] = (char*) malloc(strlen(typeList[i].typeName) + 5);
 		strcpy(globalArgs.typeFileName[i], typeList[i].typeName);
 		strcat(globalArgs.typeFileName[i], ".txt");
 
@@ -159,7 +172,7 @@ int main(int argc, char* argv[])
 			printf("fork");
 			return -1;
 		}
-		else if(!pid) // parent process
+		else if(!pid) // child process
 		{
 			setsid();
 			SetPidFile("mydemonPID");
@@ -175,4 +188,9 @@ int main(int argc, char* argv[])
 			return 0;
 		}
 	}
+	close(STDIN_FILENO);
+	close(STDOUT_FILENO);
+	close(STDERR_FILENO);
+	WorkProc();
+	return 0;
 }
