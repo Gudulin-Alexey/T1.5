@@ -20,6 +20,18 @@ static const struct option longOpts[] = {
 	{"demon", no_argument, NULL, 'D'}
 };
 
+void SetPidFile(char* Filename)
+{
+    FILE* f;
+
+    f = fopen(Filename, "w+");
+    if (f)
+    {
+        fprintf(f, "%u", getpid());
+        fclose(f);
+    }
+}
+
 int main(int argc, char* argv[])
 {
 	int status;
@@ -52,6 +64,24 @@ int main(int argc, char* argv[])
 	printf("charFileName%s\n",globalArgs.charFileName);
 	printf("structFileName%s\n",globalArgs.structFileName);
 	printf("demonFlag%d\n",globalArgs.demonFlag);
-	return 1;
+	if ( globalArgs.demonFlag == 1)
+	{
+		pid = fork();
+		if ( pid == -1)
+		{
+			printf("fork");
+			return -1;
+		}
+		else if(!pid) // parent process
+		{
+			setsid();
+			SetPidFile("mydemonPID");
+			return 0;
 
+		}
+		else
+		{
+			return 0;
+		}
+	}
 }
